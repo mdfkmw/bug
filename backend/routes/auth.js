@@ -17,10 +17,10 @@ function hash(str) {
   return crypto.createHash('sha256').update(str).digest('hex');
 }
 
-// POST /api/auth/login  { email | phone | username, password }
+// POST /api/auth/login  { email | phone | username | id | identifier, password }
 router.post('/login', async (req, res) => {
-  const { email, phone, username, password } = req.body || {};
-  const raw = (email ?? phone ?? username);
+  const { email, phone, username, id, identifier, password } = req.body || {};
+  const raw = (email ?? phone ?? username ?? id ?? identifier);
   if (!raw || !password) {
     console.log('[AUTH] 400 lipsă ident/parolă', { raw: !!raw, hasPassword: !!password });
     return res.status(400).json({ error: 'email/telefon sau username + parolă necesare' });
@@ -32,9 +32,9 @@ router.post('/login', async (req, res) => {
   const rows = await q(
     `SELECT id, name, email, phone, username, role, operator_id, active, password_hash
        FROM employees
-      WHERE (email = ? OR phone = ? OR username = ?)
+      WHERE (id = ? OR email = ? OR phone = ? OR username = ?)
       LIMIT 1`,
-    [ident, ident, ident]
+    [ident, ident, ident, ident]
   );
   const emp = rows && rows[0] ? rows[0] : null;
   if (!emp) {
