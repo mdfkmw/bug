@@ -2,12 +2,71 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { randomUUID } = require('crypto');
 
 // acces permis doar admin / operator_admin
 function ensureAdmin(req, res, next) {
   const role = req.user?.role;
   if (role === 'admin' || role === 'operator_admin') return next();
   return res.status(403).json({ error: 'forbidden' });
+}
+
+function serialize(payload) {
+  if (!payload) return null;
+  if (typeof payload === 'string') return payload;
+  try {
+    return JSON.stringify(payload);
+  } catch (err) {
+    return null;
+  }
+}
+
+async function logAuditEvent({
+  actorId = null,
+  entity = null,
+  entityId = null,
+  action,
+  relatedEntity = null,
+  relatedId = null,
+  channel = null,
+  amount = null,
+  paymentMethod = null,
+  transactionId = null,
+  note = null,
+  before = null,
+  after = null,
+  correlationId = null,
+}) {
+  if (!action) return;
+
+  try {
+    await db.query(
+      `
+      INSERT INTO audit_logs
+        (created_at, actor_id, entity, entity_id, action, related_entity, related_id,
+         correlation_id, channel, amount, payment_method, transaction_id, note, before_json, after_json)
+      VALUES (NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        actorId,
+        entity,
+        entityId,
+        action,
+        relatedEntity,
+        relatedId,
+        correlationId || randomUUID(),
+        channel,
+        amount,
+        paymentMethod,
+        transactionId,
+        note,
+        serialize(before),
+        serialize(after),
+      ],
+    );
+  } catch (err) {
+    console.warn('[audit] failed', err.message);
+  }
 }
 
 /**
@@ -33,6 +92,7 @@ router.get('/audit-logs', ensureAdmin, async (req, res) => {
         OR al.action LIKE 'person.blacklist.%'
         OR al.action = 'person.noshow.add'
         OR al.action = 'person.noshow.remove'
+        OR al.action LIKE 'trip.vehicle.%'
       )
     `;
     if (from) { where += ` AND DATE(al.created_at) >= ?`; params.push(from); }
@@ -156,3 +216,4 @@ router.get('/audit-logs', ensureAdmin, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.logAuditEvent = logAuditEvent;
