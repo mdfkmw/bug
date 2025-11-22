@@ -46,6 +46,38 @@ router.post('/', async (req, res) => {
   if (!trip_id || !vehicle_id)
     return res.status(400).json({ error: 'trip_id și vehicle_id sunt obligatorii' });
 
+  // 🔒 Validare operator: vehiculul trebuie să aparțină aceluiași operator ca și cursa
+  try {
+    const { rows: tripRows } = await db.query(
+      `SELECT rs.operator_id
+         FROM trips t
+         JOIN route_schedules rs ON rs.id = t.route_schedule_id
+        WHERE t.id = ?
+        LIMIT 1`,
+      [trip_id]
+    );
+    if (!tripRows.length) {
+      return res.status(404).json({ error: 'Cursa nu există.' });
+    }
+    const tripOperator = Number(tripRows[0]?.operator_id) || null;
+
+    const { rows: vehicleRows } = await db.query(
+      `SELECT operator_id FROM vehicles WHERE id = ? LIMIT 1`,
+      [vehicle_id]
+    );
+    if (!vehicleRows.length) {
+      return res.status(404).json({ error: 'Vehicul inexistent.' });
+    }
+    const vehicleOperator = Number(vehicleRows[0]?.operator_id) || null;
+
+    if (tripOperator && vehicleOperator && tripOperator !== vehicleOperator) {
+      return res.status(400).json({ error: 'Vehiculul aparține altui operator.' });
+    }
+  } catch (err) {
+    console.error('POST /api/trip-vehicles validation error:', err);
+    return res.status(500).json({ error: 'Eroare internă la validarea operatorului' });
+  }
+
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
