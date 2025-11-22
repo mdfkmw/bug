@@ -213,47 +213,57 @@ router.get('/summary', async (_req, res) => {
 // Găsește sau creează automat o cursă (trip)
 // ================================================================
 router.get('/find', async (req, res) => {
-  let { schedule_id, route_id, date, time } = req.query;
-  console.log('[GET /api/trips/find] IN:', { schedule_id, route_id, date, time });
+  let { schedule_id, route_schedule_id, route_id, date, time, direction } = req.query;
+  // alias: accept route_schedule_id too (frontend used to send this)
+  let scheduleId = schedule_id || route_schedule_id;
+  const normalizedDirection =
+    typeof direction === 'string' ? direction.trim().toLowerCase() : undefined;
+  console.log('[GET /api/trips/find] IN:', { scheduleId, route_id, date, time, direction });
   const time5 = typeof time === 'string' ? time.slice(0, 5) : time;
   try {
     let operator_id;
 
     // dacă nu e furnizat schedule_id, îl determinăm din route_id + time
-    if (!schedule_id) {
-      console.log('[trips/find] looking up schedule by route_id+time');
-      const { rows: schedRes } = await db.query(
-        `SELECT id, operator_id, departure
+    if (!scheduleId) {
+      console.log('[trips/find] looking up schedule by route_id+time(+direction)');
+      const schedParams = [route_id, time5];
+      let schedSql = `SELECT id, operator_id, departure
            FROM route_schedules
           WHERE route_id = ?
-            AND TIME(departure) = TIME(?)
-          LIMIT 1`,
-        [route_id, time5]
+            AND TIME(departure) = TIME(?)`;
+      if (normalizedDirection) {
+        schedSql += ' AND direction = ?';
+        schedParams.push(normalizedDirection);
+      }
+      schedSql += ' LIMIT 1';
+      const { rows: schedRes } = await db.query(
+        schedSql,
+        schedParams
       );
       if (!schedRes.length) {
         console.log('[trips/find] NO schedule for', { route_id, time });
         return res.status(404).json({ error: 'Programare inexistentă' });
       }
-      schedule_id = schedRes[0].id;
+      scheduleId = schedRes[0].id;
       time = schedRes[0].departure;
       operator_id = schedRes[0].operator_id;
       route_id = Number(route_id);
-      console.log('[trips/find] schedule found:', { schedule_id, operator_id, time });
+      console.log('[trips/find] schedule found:', { scheduleId, operator_id, time });
     } else {
       const { rows: schedRes } = await db.query(
         `SELECT operator_id, departure
            FROM route_schedules
           WHERE id = ?
           LIMIT 1`,
-        [schedule_id]
+        [scheduleId]
       );
       if (!schedRes.length) {
-        console.log('[trips/find] schedule_id not found:', schedule_id);
+        console.log('[trips/find] schedule_id not found:', scheduleId);
         return res.status(404).json({ error: 'Programare inexistentă' });
       }
       operator_id = schedRes[0].operator_id;
       time = schedRes[0].departure;
-      console.log('[trips/find] schedule by id:', { schedule_id, operator_id, time });
+      console.log('[trips/find] schedule by id:', { scheduleId, operator_id, time });
     }
 
     // verifică dacă există deja cursa
@@ -266,24 +276,24 @@ router.get('/find', async (req, res) => {
           TIME_FORMAT(t.time, '%H:%i') AS time,
           t.disabled,
           t.boarding_started
-         FROM trips t
+        FROM trips t
          LEFT JOIN trip_vehicles pv ON pv.trip_id = t.id AND pv.is_primary = 1
         WHERE t.route_schedule_id = ?
           AND t.date = DATE(?)
           AND TIME(t.time) = TIME(?)
           AND t.disabled = 0
         LIMIT 1`,
-      [schedule_id, date, time5]
+      [scheduleId, date, time5]
     );
-    console.log('[trips/find] existing trip count =', findRes.length, 'for', { schedule_id, date });
+    console.log('[trips/find] existing trip count =', findRes.length, 'for', { scheduleId, date });
     if (findRes.length) {
       console.log('[trips/find] return existing trip id=', findRes[0]?.id);
       return res.json(findRes[0]);
     }
 
-    const defaultVehicleId = await resolveDefaultVehicleId(schedule_id, operator_id);
+    const defaultVehicleId = await resolveDefaultVehicleId(scheduleId, operator_id);
     if (!defaultVehicleId) {
-      console.log('[trips/find] NO default vehicle for operator', operator_id, 'schedule', schedule_id);
+      console.log('[trips/find] NO default vehicle for operator', operator_id, 'schedule', scheduleId);
       return res.status(404).json({ error: 'Vehicul default inexistent' });
     }
 console.log('[trips/find] default vehicle:', defaultVehicleId);
@@ -292,7 +302,7 @@ console.log('[trips/find] default vehicle:', defaultVehicleId);
       `INSERT INTO trips
          (route_schedule_id, route_id, date, time)
        VALUES (?, ?, ?, TIME(?))`,
-      [schedule_id, route_id, date, time5]
+      [scheduleId, route_id, date, time5]
     );
     const insertId = ins.insertId;
 console.log('[trips/find] inserted trip id=', insertId);
