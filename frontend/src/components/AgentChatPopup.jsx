@@ -54,15 +54,7 @@ export default function AgentChatPopup({ user }) {
   const [error, setError] = useState(null);
   const [isSending, setIsSending] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
-  const [lastReadId, setLastReadId] = useState(() => {
-    if (!user?.id) return 0;
-    try {
-      const saved = Number(window.localStorage.getItem(`agent-chat:last-read:${user.id}`) || '0');
-      return Number.isFinite(saved) && saved > 0 ? saved : 0;
-    } catch {
-      return 0;
-    }
-  });
+  const [lastReadId, setLastReadId] = useState(0);
   const pollingRef = useRef(null);
   const lastMessageIdRef = useRef(0);
   const chatBodyRef = useRef(null);
@@ -80,19 +72,11 @@ export default function AgentChatPopup({ user }) {
   }, []);
 
   useEffect(() => {
-    if (!storageKey) {
-      setLastReadId(0);
-      setHasUnread(false);
-      return;
-    }
+    if (!storageKey) return;
     try {
       const saved = Number(window.localStorage.getItem(storageKey) || '0');
-      const finalValue = Number.isFinite(saved) && saved > 0 ? saved : 0;
-      setLastReadId(finalValue);
-      if (lastMessageIdRef.current <= finalValue) setHasUnread(false);
-    } catch {
-      setLastReadId(0);
-    }
+      if (Number.isFinite(saved) && saved > 0) setLastReadId(saved);
+    } catch { }
   }, [storageKey]);
 
   const markAsRead = useCallback((latestId) => {
@@ -140,12 +124,6 @@ export default function AgentChatPopup({ user }) {
     if (newest?.id) markAsRead(newest.id);
     if (chatBodyRef.current) chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
   }, [isOpen, messages, markAsRead]);
-
-  useEffect(() => {
-    const newest = messages[messages.length - 1];
-    if (!newest?.id) return;
-    if (newest.id <= lastReadId) setHasUnread(false);
-  }, [lastReadId, messages]);
 
   const handleToggle = () => {
     setIsOpen((prev) => {
