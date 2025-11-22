@@ -6,7 +6,6 @@ const db = require('../db'); // așteptat să fie mysql2/promise pool
 
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { resolveDefaultVehicleId } = require('../utils/scheduleDefaults');
-const { logAuditEvent } = require('./audit');
 
 function parseBooleanFlag(value) {
   if (value === true || value === false) return value;
@@ -371,21 +370,6 @@ router.patch('/:id/vehicle', async (req, res) => {
       return res.status(409).json({ error: 'Cursa nu are vehicul principal configurat.' });
     }
 
-    const { rows: vehicleMetaRows } = await db.query(
-      'SELECT id, name, plate_number FROM vehicles WHERE id IN (?, ?)',
-      [oldVehicleId, targetVehicleId],
-    );
-    const vehicleMeta = new Map((vehicleMetaRows || []).map((row) => [Number(row.id), row]));
-    if (!vehicleMeta.has(targetVehicleId)) {
-      return res.status(404).json({ error: 'Vehiculul nou nu există.' });
-    }
-    const vehicleLabel = (id) => {
-      const meta = vehicleMeta.get(Number(id));
-      if (!meta) return `Vehicul #${id}`;
-      const plate = meta.plate_number ? ` (${meta.plate_number})` : '';
-      return `${meta.name || 'Vehicul'}${plate}`;
-    };
-
     // 2. Ia rezervările active pe cursa asta și vehiculul vechi
     const { rows: reservations } = await db.query(
       `SELECT r.id, s.label
@@ -466,17 +450,6 @@ router.patch('/:id/vehicle', async (req, res) => {
 
       await conn.commit();
       conn.release();
-      await logAuditEvent({
-        actorId: req.user?.id || null,
-        entity: 'trip',
-        entityId: Number(tripId) || tripId || null,
-        action: 'trip.vehicle.change',
-        relatedEntity: 'vehicle',
-        relatedId: targetVehicleId,
-        note: `Vehicul principal schimbat: ${vehicleLabel(oldVehicleId)} → ${vehicleLabel(targetVehicleId)}`,
-        before: { vehicle_id: oldVehicleId },
-        after: { vehicle_id: targetVehicleId },
-      });
       return res.json({ success: true });
     } catch (err) {
     await conn.rollback();
@@ -1136,33 +1109,11 @@ router.post('/:trip_id/vehicles', async (req, res) => {
       [tripId, vehicle_id]
     );
 
-    const created = newRow[0] || {
+    return res.status(201).json(newRow[0] || {
       trip_id: tripId,
       vehicle_id,
       is_primary: Boolean(is_primary)
-    };
-
-    const vehicleMeta = vehRows[0] || {};
-    const label = vehicleMeta.name || vehicleMeta.plate_number
-      ? `${vehicleMeta.name || 'Vehicul'}${vehicleMeta.plate_number ? ` (${vehicleMeta.plate_number})` : ''}`
-      : `Vehicul #${vehicle_id}`;
-
-    await logAuditEvent({
-      actorId: req.user?.id || null,
-      entity: 'trip',
-      entityId: tripId,
-      action: 'trip.vehicle.duplicate.add',
-      relatedEntity: 'vehicle',
-      relatedId: vehicle_id,
-      note: `Adăugat vehicul ${label} ca dublură`,
-      after: {
-        trip_vehicle_id: created.id || null,
-        vehicle_id,
-        is_primary: Boolean(is_primary),
-      },
     });
-
-    return res.status(201).json(created);
   } catch (err) {
     console.error('[POST /api/trips/:trip_id/vehicles] error:', err);
     return res.status(500).json({ error: 'internal' });

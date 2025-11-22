@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { logAuditEvent } = require('./audit');
 // toți utilizatorii AUTENTIFICAȚI cu aceste roluri au voie aici
 router.use(requireAuth, requireRole('admin','operator_admin','agent'));
 /* ================================================================
@@ -129,24 +128,7 @@ router.post('/', async (req, res) => {
       [insertedId]
     );
 
-    const created = rows[0];
-
-    await logAuditEvent({
-      actorId: req.user?.id || null,
-      entity: 'trip',
-      entityId: Number(trip_id) || trip_id || null,
-      action: 'trip.vehicle.duplicate.add',
-      relatedEntity: 'vehicle',
-      relatedId: vehicle_id,
-      note: `Adăugat vehicul ${created?.vehicle_name || ''}${created?.plate_number ? ` (${created.plate_number})` : ''} ca dublură`,
-      after: {
-        trip_vehicle_id: insertedId,
-        vehicle_id,
-        is_primary: Boolean(normalizedPrimary),
-      },
-    });
-
-    res.json(created);
+    res.json(rows[0]);
   } catch (err) {
     await conn.rollback();
     conn.release();
@@ -246,12 +228,6 @@ router.delete('/:tvId', async (req, res) => {
 
     const { trip_id, vehicle_id, is_primary } = tv[0];
 
-    const { rows: vehicleInfoRows } = await db.query(
-      `SELECT name, plate_number FROM vehicles WHERE id = ? LIMIT 1`,
-      [vehicle_id]
-    );
-    const vehicleMeta = vehicleInfoRows[0] || null;
-
     // verificăm rezervările pe acest vehicul
     const [rez] = await conn.execute(
       `SELECT COUNT(*) AS count
@@ -281,26 +257,6 @@ router.delete('/:tvId', async (req, res) => {
 
     await conn.commit();
     conn.release();
-
-    const label = vehicleMeta?.name || vehicleMeta?.plate_number
-      ? `${vehicleMeta?.name || 'Vehicul'}${vehicleMeta?.plate_number ? ` (${vehicleMeta.plate_number})` : ''}`
-      : `Vehicul #${vehicle_id}`;
-
-    await logAuditEvent({
-      actorId: req.user?.id || null,
-      entity: 'trip',
-      entityId: Number(trip_id) || trip_id || null,
-      action: 'trip.vehicle.duplicate.remove',
-      relatedEntity: 'vehicle',
-      relatedId: vehicle_id,
-      note: `Dublură ștearsă: ${label}`,
-      before: {
-        trip_vehicle_id: Number(tvId),
-        vehicle_id,
-        is_primary: Boolean(is_primary),
-      },
-    });
-
     res.json({ success: true });
   } catch (err) {
     await conn.rollback();
