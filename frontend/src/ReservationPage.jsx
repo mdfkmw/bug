@@ -864,6 +864,7 @@ export default function ReservationPage({ userRole, user }) {
         activePassengers.slice(1).forEach((passenger) => {
           writeLine(passenger.name, '600 12px "Inter", sans-serif');
           writeLine(passenger.phone, '12px "Inter", sans-serif');
+          writeLine(`${passenger.board_at} → ${passenger.exit_at}`, '12px "Inter", sans-serif');
           writeObservation(passenger.observations);
         });
       }
