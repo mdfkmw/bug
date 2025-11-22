@@ -3362,7 +3362,7 @@ export default function ReservationPage({ userRole, user }) {
 
         const tripRes = await fetch(
           `/api/trips/find?route_id=${selectedRoute.id}` +
-          `&route_schedule_id=${selectedScheduleId}` +
+          `&schedule_id=${selectedScheduleId}` +
           `&date=${format(selectedDate, 'yyyy-MM-dd')}` +
           (selectedHour ? `&time=${encodeURIComponent(selectedHour)}` : '') +
           (effectiveDirection ? `&direction=${effectiveDirection}` : ''),
