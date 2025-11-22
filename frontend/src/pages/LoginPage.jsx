@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function LoginPage({ onLoggedIn }) {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -18,7 +18,7 @@ export default function LoginPage({ onLoggedIn }) {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.ok !== true) {
@@ -44,13 +44,13 @@ export default function LoginPage({ onLoggedIn }) {
       {err && <div className="mb-3 text-sm text-red-600">{err}</div>}
       <form onSubmit={submit} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1">
-          <span className="text-sm">Email sau telefon</span>
+          <span className="text-sm">Email, telefon, username sau ID</span>
           <input
             className="border rounded px-3 py-2"
             type="text"
             autoComplete="username"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
+            value={identifier}
+            onChange={e => setIdentifier(e.target.value)}
             required
           />
         </label>
